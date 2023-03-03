@@ -12,13 +12,13 @@ def lambda_handler(event, context):
     conn = psycopg2.connect(user=db_user, database=db_name, host=db_host,
                             password=db_pass, port=db_port)
 
-    sql = "SELECT * FROM hypertable WHERE time > WHERE time > NOW() - INTERVAL '2 weeks'
+    sql = "SELECT * FROM hypertable WHERE time > WHERE time > NOW() - INTERVAL '2 weeks'"
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute(sql)
     result = cursor.fetchall()
     return {
         'statusCode': 200,
-        'body': json.dumps(result, default=str),
+        'body': "Hello World",
         'headers': {
             "Content-Type": "application/json"
         }

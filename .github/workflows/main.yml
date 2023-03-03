@@ -30,7 +30,7 @@ jobs:
 #          bucket: ${{ secrets.S3_BUCKET }}
 #          bucket-region: ${{ secrets.AWS_REGION }}
       - name: Deploy static site to S3 bucket
-        run: aws s3 sync ./$DEPLOY_DIR/ s3://$BUILD/${{ secrets.S3_BUCKET}}.com
+        run: aws s3 sync ./$DEPLOY_DIR/ s3://$DEPLOY_DIR/${{ secrets.S3_BUCKET}}.com
 
             # --delete flag will remove any file in the s3 that are not on the "thefoldertodeploy" folder
 

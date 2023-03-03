@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - master
+env:
+  DEPLOY_DIR: build
+  aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  aws_region: ${{ secrets.AWS_REGION }}
 jobs:
 
   deploy_source:
@@ -16,14 +21,16 @@ jobs:
         uses: appleboy/lambda-action@master
         with:
 #          folder: build
-          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws_region: ${{ secrets.AWS_REGION }}
           function_name: lambda_cd
           source: github_lambda.py
-      - name: deploy to s3
-        uses: reggionick/s3-deploy@v3
-        with:
-          folder: build
-          bucket: ${{ secrets.S3_BUCKET }}
-          bucket-region: ${{ secrets.AWS_REGION }}
+#      - name: deploy to s3
+#        uses: reggionick/s3-deploy@v3
+#        with:
+#          folder: build
+#          bucket: ${{ secrets.S3_BUCKET }}
+#          bucket-region: ${{ secrets.AWS_REGION }}
+      - name: Deploy static site to S3 bucket
+        run: aws s3 sync ./$DEPLOY_DIR/ s3://$BUILD/${{ secrets.S3_BUCKET}}.com
+
+            # --delete flag will remove any file in the s3 that are not on the "thefoldertodeploy" folder
+

@@ -17,10 +17,12 @@ def lambda_handler(event, context):
     # cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     # cursor.execute(sql)
     # result = cursor.fetchall()
-    return {
+    result = {
         'statusCode': 200,
         'body': "Hello World",
         'headers': {
             "Content-Type": "application/json"
         }
     }
+    print(result)
+    return result

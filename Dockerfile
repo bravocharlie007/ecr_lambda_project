@@ -1,7 +1,7 @@
 #FROM python:3.9
 
 
-FROM public.ecr.aws/lambda/python:3.8
+FROM public.ecr.aws/lambda/python:3.9
 
 RUN echo $WORKDIR
 

@@ -1,7 +1,5 @@
 FROM python:3.9
 
-WORKDIR /usr/src/app
-
 RUN echo $WORKDIR
 
 COPY requirements.txt .

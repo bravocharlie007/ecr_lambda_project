@@ -47,7 +47,7 @@ jobs:
           echo "HOME: $HOME"
           echo "ECR REGISTRY: $ECR_REGISTRY"
           pwd
-          aws s3 cp s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR/ .
+          aws s3 cp s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR/. .
           ls -l
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           echo "Full image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"

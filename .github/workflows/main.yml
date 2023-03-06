@@ -45,9 +45,10 @@ jobs:
           echo "HOME: $HOME"
           echo "ECR REGISTRY $ECR_REGISTRY"
           pwd
-          ls -l
+#          ls -l
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          cp $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG build/
+          ls -l
+#          cp $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG build/
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       - name: Deploy static site to S3 bucket

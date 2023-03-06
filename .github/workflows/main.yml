@@ -46,7 +46,7 @@ jobs:
           echo "ECR REGISTRY $ECR_REGISTRY"
           pwd
           ls -l
-          docker build -f Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           cp $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG build/
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 

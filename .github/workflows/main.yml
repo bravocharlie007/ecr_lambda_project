@@ -43,8 +43,8 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          echo $HOME
-          echo $ECR_REGISTRY
+          echo "HOME: $HOME"
+          echo "ECR REGISTRY $ECR_REGISTRY"
           ls -l
           docker build -f Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           cp $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG build/

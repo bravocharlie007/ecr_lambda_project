@@ -1,1 +1,1 @@
-pscycopg2
+requests

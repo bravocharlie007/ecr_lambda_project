@@ -51,7 +51,9 @@ jobs:
           ls -l
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           echo "Full image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "RUNNING IMAGE"
           docker run $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "IMAGE RAN"
           ls -l
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 

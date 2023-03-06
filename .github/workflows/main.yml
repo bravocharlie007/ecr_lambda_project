@@ -34,7 +34,9 @@ jobs:
 #          folder: build
 #          bucket: ${{ secrets.S3_BUCKET }}
 #          bucket-region: ${{ secrets.AWS_REGION }}
-
+      - name: Deploy static site to S3 bucket
+        run: aws s3 sync ./$DEPLOY_DIR/ s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR --delete
+        # --delete flag will remove any file in the s3 that are not on the "thefoldertodeploy" folder
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
@@ -45,13 +47,12 @@ jobs:
           echo "HOME: $HOME"
           echo "ECR REGISTRY $ECR_REGISTRY"
           pwd
+          aws s3 cp s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR .
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           ls -l
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      - name: Deploy static site to S3 bucket
-        run: aws s3 sync ./$DEPLOY_DIR/ s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR --delete
-        # --delete flag will remove any file in the s3 that are not on the "thefoldertodeploy" folder
+
 
 #      - name: create lambda from ecr image
 #        run: aws

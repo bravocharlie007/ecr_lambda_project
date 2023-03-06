@@ -46,6 +46,8 @@ jobs:
           echo "HOME: $HOME"
           echo "ECR REGISTRY $ECR_REGISTRY"
           ls -l
+          cd /work/ecr_lambda_project/ecr_lambda_project
+          ls -l
           docker build -f Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           cp $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG build/
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG

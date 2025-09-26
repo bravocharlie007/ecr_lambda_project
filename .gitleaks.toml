@@ -1,0 +1,70 @@
+# GitLeaks configuration for comprehensive credential detection
+[extend]
+useDefault = true
+
+[[rules]]
+description = "AWS Access Key ID"
+id = "aws-access-key-id"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["key", "AWS"]
+
+[[rules]]
+description = "AWS Secret Access Key"
+id = "aws-secret-access-key"
+regex = '''[0-9a-zA-Z/+]{40}'''
+tags = ["key", "AWS"]
+
+[[rules]]
+description = "GitHub Personal Access Token"
+id = "github-pat"
+regex = '''ghp_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub"]
+
+[[rules]]
+description = "GitHub OAuth Token"
+id = "github-oauth"
+regex = '''gho_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub"]
+
+[[rules]]
+description = "GitHub App Token"
+id = "github-app-token"
+regex = '''(ghu|ghs)_[0-9a-zA-Z]{36}'''
+tags = ["key", "GitHub"]
+
+[[rules]]
+description = "Private Key"
+id = "private-key"
+regex = '''-----BEGIN[ A-Z]*PRIVATE KEY-----'''
+tags = ["key", "private"]
+
+[[rules]]
+description = "Generic API Key"
+id = "api-key-generic"
+regex = '''(?i)api[_-]?key\s*[=:]\s*['"][0-9a-zA-Z]{20,}['"]'''
+tags = ["key", "API"]
+
+[allowlist]
+description = "Ignore test files and documentation"
+files = [
+  '''\.gitleaks\.toml$''',
+  '''README\.md$''',
+  '''.*\.md$''',
+  '''test.*\.py$''',
+  '''example.*\.(py|yml|yaml|json)$'''
+]
+
+paths = [
+  '''test/''',
+  '''tests/''',
+  '''examples/''',
+  '''docs/'''
+]
+
+regexes = [
+  '''(password|token|key).*=.*(example|dummy|test|placeholder|YOUR_|REPLACE_)''',
+  '''password.*REDACTED''',
+  '''secret.*REDACTED''',
+  '''/application/ec2deployer/resource/terraform/\*''',
+  '''/application/ec2deployer/resource/terraf'''
+]

@@ -52,13 +52,45 @@ venv.bak/
 ehthumbs.db
 Thumbs.db
 
-# Security
+# Security - Enhanced patterns
 *.pem
 *.key
 *.p12
+*.pfx
+*.crt
+*.der
+*.csr
+*.p7b
+*.p7s
+*.p8
+*.p12
+*.pfx
 .env.local
 .env.production
 secrets.json
+credentials.json
+service-account.json
+# SSH keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+id_ecdsa
+id_ecdsa.pub
+# AWS credentials
+.aws/credentials
+.aws/config
+# Database dumps
+*.sql
+*.dump
+*.sqlite
+*.db
+
+# Security scanning results
+bandit-report.json
+safety-report.json
+trivy-results.sarif
+.secrets.baseline
 
 # Logs
 *.log
@@ -73,3 +105,10 @@ logs/
 
 # Docker
 .dockerignore
+docker-compose.override.yml
+
+# Gaming platform specific
+game-saves/
+steam-cache/
+driver-packages/
+user-profiles/

@@ -4,60 +4,122 @@ on:
   push:
     branches:
       - master
+  # Allow manual deployment for emergency fixes
+  workflow_dispatch:
+
+# Use OIDC instead of long-lived credentials for better security
+permissions:
+  id-token: write
+  contents: read
+
 env:
   DEPLOY_DIR: build
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_REGION: ${{ secrets.AWS_REGION }}
   ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
-  IMAGE_TAG: my_github_lambda_tag
+  # Use semantic versioning with commit SHA for better tracking
+  IMAGE_TAG: v1.0.0-${{ github.sha }}
 jobs:
+  security-scan:
+    name: Security scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'  # Fail build on critical/high vulnerabilities
 
   deploy_source:
     name: deploy lambda from source
     runs-on: ubuntu-latest
+    needs: security-scan  # Only deploy if security scan passes
     steps:
-      - name: checkout source code
-        uses: actions/checkout@v1
-      - name: default deploy
-        uses: appleboy/lambda-action@master
+      - name: Checkout source code
+        uses: actions/checkout@v4  # Updated to latest version
+      
+      # Configure AWS credentials using OIDC (more secure than access keys)
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws_access_key_id: $AWS_ACCESS_KEY_ID
-          aws_secret_access_key: $AWS_SECRET_ACCESS_KEY
-          aws_region: $AWS_REGION
-#          folder: build
-          function_name: lambda_cd
-          source: github_lambda.py
-#      - name: deploy to s3
-#        uses: reggionick/s3-deploy@v3
-#        with:
-#          folder: build
-#          bucket: ${{ secrets.S3_BUCKET }}
-#          bucket-region: ${{ secrets.AWS_REGION }}
-      - name: Deploy static site to S3 bucket
-        run: aws s3 sync ./$DEPLOY_DIR/ s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR --delete
-        # --delete flag will remove any file in the s3 that are not on the "thefoldertodeploy" folder
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Gaming-Deploy
+      
+      # Set up Python for testing
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      # Install dependencies and run basic tests
+      - name: Install dependencies and test
+        run: |
+          pip install -r build/requirements.txt
+          python -m py_compile github_lambda.py
+          python -m py_compile build/github_lambda.py
+      
+      # Deploy Lambda function with proper error handling
+      - name: Deploy Lambda function
+        run: |
+          # Create deployment package
+          zip -r lambda-deployment.zip github_lambda.py
+          
+          # Update Lambda function with error handling
+          aws lambda update-function-code \
+            --function-name lambda_cd \
+            --zip-file fileb://lambda-deployment.zip \
+            --region ${{ env.AWS_REGION }} || \
+          aws lambda create-function \
+            --function-name lambda_cd \
+            --runtime python3.9 \
+            --role ${{ secrets.LAMBDA_EXECUTION_ROLE_ARN }} \
+            --handler github_lambda.lambda_handler \
+            --zip-file fileb://lambda-deployment.zip \
+            --timeout 30 \
+            --memory-size 256 \
+            --region ${{ env.AWS_REGION }}
+      
+      # Deploy to S3 with encryption
+      - name: Deploy to S3 with encryption
+        run: |
+          aws s3 sync ./$DEPLOY_DIR/ s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR \
+            --delete \
+            --server-side-encryption AES256 \
+            --region ${{ env.AWS_REGION }}
+      
+      # Build and push secure Docker image
       - name: Login to Amazon ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
-      - name: Build, tag, and push image to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build, scan and push secure image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
-          echo "HOME: $HOME"
-          echo "ECR REGISTRY: $ECR_REGISTRY"
-          pwd
-          aws s3 cp s3://${{ secrets.S3_BUCKET }}/$DEPLOY_DIR/ . --recursive
-          ls -l
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          echo "Full image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          echo "RUNNING IMAGE"
-          docker run $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "IMAGE RAN"
-          ls -l
+          # Build Docker image with proper labels for tracking
+          docker build \
+            --label "git-commit=${{ github.sha }}" \
+            --label "build-date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --label "version=${{ env.IMAGE_TAG }}" \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            .
+          
+          # Scan image for vulnerabilities before pushing
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v $HOME/Library/Caches:/root/.cache/ \
+            aquasec/trivy:latest image \
+            --exit-code 1 \
+            --severity CRITICAL,HIGH \
+            $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          
+          # Push image to ECR
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-
-
-#      - name: create lambda from ecr image
-#        run: aws
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          
+          echo "Successfully pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"

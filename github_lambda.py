@@ -12,7 +12,8 @@ logger.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
     """
-    Gaming platform API handler with security improvements
+    Basic EC2 deployment platform API handler
+    This is a learning/development implementation for web application management
     """
     try:
         # Log the request for security monitoring
@@ -25,20 +26,28 @@ def lambda_handler(event, context):
         http_method = event.get('httpMethod', 'GET')
         path = event.get('path', '/')
         
-        # Basic routing for gaming platform APIs
+        # Basic routing for web application management APIs
         if path == '/health':
-            return create_response(200, {'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()})
+            return create_response(200, {
+                'status': 'healthy', 
+                'timestamp': datetime.utcnow().isoformat(),
+                'platform': 'EC2 Deployment Automation',
+                'version': '1.0.0'
+            })
         
-        elif path == '/gaming/instances' and http_method == 'GET':
-            return list_gaming_instances(user_id)
+        elif path == '/web/instances' and http_method == 'GET':
+            return list_web_instances(user_id)
         
-        elif path == '/gaming/instances' and http_method == 'POST':
-            return create_gaming_instance(event, user_id)
+        elif path == '/web/instances' and http_method == 'POST':
+            return create_web_instance(event, user_id)
         
-        elif path.startswith('/gaming/instances/') and http_method == 'PUT':
+        elif path.startswith('/web/instances/') and http_method == 'PUT':
             instance_id = path.split('/')[-1]
-            return manage_gaming_instance(event, instance_id, user_id)
+            return manage_web_instance(event, instance_id, user_id)
         
+        elif path == '/web/applications' and http_method == 'GET':
+            return list_web_applications(user_id)
+            
         else:
             return create_response(404, {'error': 'Endpoint not found'})
             
@@ -55,12 +64,13 @@ def create_response(status_code, body):
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',  # Configure properly for production
             'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE',
-            'Access-Control-Allow-Headers': 'Content-Type,Authorization'
+            'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+            'X-Platform': 'EC2-Deployment-Automation'
         }
     }
 
-def list_gaming_instances(user_id):
-    """List gaming instances for user"""
+def list_web_instances(user_id):
+    """List web server instances for user"""
     # This would connect to database with proper parameterized queries
     # Example of secure database query structure:
     """
@@ -70,8 +80,8 @@ def list_gaming_instances(user_id):
         
         # SECURE: Parameterized query prevents SQL injection
         query = '''
-            SELECT instance_id, instance_type, status, created_at, last_accessed
-            FROM gaming_instances 
+            SELECT instance_id, instance_type, status, created_at, last_accessed, application_name
+            FROM web_instances 
             WHERE user_id = %s AND status != 'terminated'
             ORDER BY created_at DESC
         '''
@@ -92,31 +102,58 @@ def list_gaming_instances(user_id):
     
     # Mock response for now
     return create_response(200, {
-        'instances': [],
-        'message': 'No active gaming instances found'
+        'instances': [
+            {
+                'instance_id': 'i-web-12345',
+                'instance_type': 't3.micro',
+                'status': 'running',
+                'application': 'Apache Web Server',
+                'availability_zone': 'us-east-1a',
+                'public_ip': '54.123.45.67',
+                'created_at': '2024-09-26T10:00:00Z'
+            },
+            {
+                'instance_id': 'i-web-67890',
+                'instance_type': 't3.micro', 
+                'status': 'running',
+                'application': 'Apache Web Server',
+                'availability_zone': 'us-east-1b',
+                'public_ip': '54.123.45.68',
+                'created_at': '2024-09-26T10:05:00Z'
+            }
+        ],
+        'message': 'Web server instances retrieved successfully'
     })
 
-def create_gaming_instance(event, user_id):
-    """Create new gaming instance for user"""
+def create_web_instance(event, user_id):
+    """Create new web server instance for user"""
     try:
         body = json.loads(event.get('body', '{}'))
-        instance_type = body.get('instance_type', 'g4dn.xlarge')  # Default gaming instance
+        instance_type = body.get('instance_type', 't3.micro')  # Default web server instance
+        application = body.get('application', 'apache')
         
         # Validate instance type against allowed list
-        allowed_instances = ['g4dn.xlarge', 'g4dn.2xlarge', 'g5.xlarge']
+        allowed_instances = ['t3.micro', 't3.small', 't3.medium']
         if instance_type not in allowed_instances:
             return create_response(400, {'error': 'Invalid instance type'})
+        
+        # Validate application type
+        allowed_applications = ['apache', 'nginx', 'nodejs', 'python-flask']
+        if application not in allowed_applications:
+            return create_response(400, {'error': 'Invalid application type'})
         
         # Mock EC2 instance creation (would use boto3 EC2 client)
         ec2_client = boto3.client('ec2')
         
-        # This would create the actual instance with proper security groups
+        # This would create the actual web server instance
         mock_response = {
-            'instance_id': 'i-gaming-' + datetime.now().strftime('%Y%m%d%H%M%S'),
+            'instance_id': 'i-web-' + datetime.now().strftime('%Y%m%d%H%M%S'),
             'instance_type': instance_type,
+            'application': application,
             'status': 'launching',
             'user_id': user_id,
-            'created_at': datetime.utcnow().isoformat()
+            'created_at': datetime.utcnow().isoformat(),
+            'estimated_ready_time': (datetime.utcnow() + timedelta(minutes=5)).isoformat()
         }
         
         return create_response(201, mock_response)
@@ -125,15 +162,15 @@ def create_gaming_instance(event, user_id):
         return create_response(400, {'error': 'Invalid JSON in request body'})
     except Exception as e:
         logger.error(f"Instance creation error: {str(e)}")
-        return create_response(500, {'error': 'Failed to create instance'})
+        return create_response(500, {'error': 'Failed to create web server instance'})
 
-def manage_gaming_instance(event, instance_id, user_id):
-    """Start, stop, or terminate gaming instance"""
+def manage_web_instance(event, instance_id, user_id):
+    """Start, stop, restart, or terminate web server instance"""
     try:
         body = json.loads(event.get('body', '{}'))
         action = body.get('action')
         
-        if action not in ['start', 'stop', 'terminate']:
+        if action not in ['start', 'stop', 'restart', 'terminate']:
             return create_response(400, {'error': 'Invalid action'})
         
         # Verify user owns this instance (security check)
@@ -144,14 +181,42 @@ def manage_gaming_instance(event, instance_id, user_id):
             'instance_id': instance_id,
             'action': action,
             'status': 'pending',
-            'user_id': user_id
+            'user_id': user_id,
+            'message': f'Web server instance {action} initiated successfully'
         })
         
     except json.JSONDecodeError:
         return create_response(400, {'error': 'Invalid JSON in request body'})
     except Exception as e:
         logger.error(f"Instance management error: {str(e)}")
-        return create_response(500, {'error': 'Failed to manage instance'})
+        return create_response(500, {'error': 'Failed to manage web server instance'})
+
+def list_web_applications(user_id):
+    """List deployed web applications"""
+    # Mock response showing web applications running on the platform
+    return create_response(200, {
+        'applications': [
+            {
+                'name': 'Demo Website',
+                'url': 'http://alb-dns-name/',
+                'status': 'active',
+                'instances': ['i-web-12345', 'i-web-67890'],
+                'health_check': 'passing'
+            },
+            {
+                'name': 'API Service',
+                'url': 'http://alb-dns-name/api/',
+                'status': 'active', 
+                'instances': ['i-web-12345'],
+                'health_check': 'passing'
+            }
+        ],
+        'total_applications': 2,
+        'load_balancer': {
+            'dns_name': 'example-alb-123456789.us-east-1.elb.amazonaws.com',
+            'status': 'active'
+        }
+    })
 
 def get_db_connection():
     """Get secure database connection with environment variables"""
@@ -163,7 +228,7 @@ def get_db_connection():
         port=os.environ.get('DB_PORT', 5432),
         database=os.environ['DB_NAME'],
         user=os.environ['DB_USER'],
-        password=os.environ['DB_PASS'],
+        ******'DB_PASS'],
         sslmode='require'  # Enforce SSL
     )
     """

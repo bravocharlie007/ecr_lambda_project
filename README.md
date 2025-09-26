@@ -1,284 +1,329 @@
-# Family Gaming Cloud Platform
+# EC2 Deployment Automation Platform
 
 ## Overview
 
-This repository contains the **API and Lambda functions** for a family-friendly cloud gaming platform built on AWS. The project enables you and your family members to spin up on-demand Windows gaming instances with automated management, without requiring fixed IP addresses.
+This repository contains a **basic Lambda function** that is part of a larger **EC2 deployment automation platform** built on AWS. The platform enables automated provisioning and management of web application infrastructure through multiple Terraform workspaces and Lambda APIs.
+
+**CORRECTION:** After reviewing all related repositories, this is **NOT a gaming platform** as initially analyzed. It's a web application deployment automation system.
 
 ## Multi-Workspace Architecture
 
-**Note:** This repository is part of a larger multi-workspace setup. The complete platform requires the following workspaces/repositories:
+This platform consists of several interconnected Terraform workspaces and Lambda functions:
 
 ### Workspace Dependencies & Deployment Order
 
-1. **VPC Workspace** (External - handles network foundation)
-   - Creates VPC, subnets, internet gateway, NAT gateway
-   - Configures route tables and network ACLs
-   - Sets up VPN endpoints for secure family access
+1. **VPC Workspace** (`bravocharlie007/vpc`)
+   - Creates VPC (15.0.0.0/16), public/private subnets
+   - Configures Internet Gateway and route tables
+   - Provides network foundation for all other components
+   - **Outputs**: vpc_id, subnet_id_list, igw_id, root_deployment_id
 
-2. **Compute Workspace** (External - handles ALB/NLB and gaming instances)  
+2. **Compute Workspace** (`bravocharlie007/compute`) 
    - Creates Application Load Balancer in public subnets
-   - Configures target groups for Lambda functions
-   - Manages EC2 gaming instances in private subnets
-   - Sets up Auto Scaling groups for cost optimization
+   - Provisions EC2 instances (t3.micro) running Apache web servers
+   - Configures security groups for web traffic
+   - Attaches Elastic IPs to instances
+   - **Purpose**: Web application hosting infrastructure
 
-3. **This Repository** (API Lambda functions)
-   - Gaming instance management APIs
-   - User authentication and authorization
-   - Save game backup automation
-   - Session management and monitoring
+3. **EC2-Deployer API Lambda** (`bravocharlie007/ec2-deployer-api-lambda`)
+   - Advanced Lambda API for automated EC2 provisioning
+   - Uses AWS Lambda Powertools for enterprise features
+   - Supports instance "pave" requests (automated deployment)
+   - **Purpose**: Production API for EC2 automation
+
+4. **This Repository** (`bravocharlie007/ecr_lambda_project`)
+   - Basic "Hello World" Lambda function
+   - Learning/prototype implementation
+   - CI/CD pipeline for containerized Lambda deployment
+   - **Purpose**: Development/learning environment
+
+5. **Zone Infrastructure** (`bravocharlie007/zone-infrastructure`)
+   - Route 53 hosted zone management
+   - DNS configuration for the platform
+   - **Purpose**: DNS and domain management
 
 ### Deployment Sequence
 ```bash
 1. Deploy VPC workspace first (network foundation)
-2. Deploy Compute workspace second (ALB + EC2 instances)  
-3. Deploy this Lambda workspace third (API layer)
-4. Configure DNS and certificates last
+2. Deploy Zone Infrastructure (DNS setup)
+3. Deploy Compute workspace (ALB + web servers)
+4. Deploy EC2-Deployer API Lambda (production API)
+5. Deploy this Lambda workspace (development/testing)
 ```
 
-## Architecture for Family Gaming
+## Actual Architecture (Web Application Platform)
 
 ### Core Components
 
-1. **AWS Lambda Functions** (`github_lambda.py`)
-   - RESTful APIs for gaming instance management
-   - Secure user authentication (no IP restrictions needed)
-   - Automated save game backups to S3
-   - Session monitoring and cost controls
+1. **Application Load Balancer**
+   - Internet-facing ALB distributing traffic to web servers
+   - HTTP/HTTPS listeners (HTTPS redirect ready)
+   - Target groups with health checks
 
-2. **Docker Container** (`build/Dockerfile`)
-   - AWS Lambda Python runtime for security
-   - Non-root user configuration
-   - Vulnerability scanning in CI/CD
+2. **EC2 Web Servers**
+   - t3.micro instances running Apache HTTP server
+   - Displays hostname and availability zone information
+   - Distributed across multiple AZs for high availability
+   - Elastic IPs for consistent addressing
 
-3. **Secure CI/CD Pipeline** (`.github/workflows/main.yml`)
-   - OIDC authentication (no long-lived credentials)
-   - Security scanning before deployment
-   - Automated testing and validation
-   - Multi-environment support
+3. **EC2 Deployment API**
+   - Professional Lambda API using AWS Powertools
+   - Automated instance provisioning ("pave" requests)
+   - Request validation and quota management
+   - Comprehensive error handling
 
-### Family-Friendly Security Model
+4. **This Basic Lambda**
+   - Simple "Hello World" implementation
+   - Docker containerization via ECR
+   - GitHub Actions CI/CD pipeline
+   - Learning/development purposes
 
-**Problem Solved:** How to give family members secure access without knowing their IP addresses
+### Network Security Architecture
 
-**Solutions Implemented:**
+**Current Security Groups (from Compute workspace):**
+- **ALB Security Group**: Allows HTTP/HTTPS from internet (0.0.0.0/0)
+- **EC2 Security Group**: Allows HTTP/HTTPS from ALB only
+- **SSH Security Group**: Allows SSH from anywhere (0.0.0.0/0) ⚠️ **SECURITY CONCERN**
+- **Package Security Group**: Allows HTTPS to AWS package repositories
 
-#### Option 1: AWS Client VPN (Recommended)
-- Family members install AWS VPN client
-- Gaming instances stay in private subnets  
-- No public IP exposure needed
-- Most secure option
+## Security Analysis & Recommendations
 
-#### Option 2: Tailscale Mesh VPN (Easiest)
-- Install Tailscale on gaming instances and family devices
-- Creates secure mesh network automatically
-- Works through any firewall/NAT
-- Zero configuration required
+### 🚨 Current Security Issues
 
-#### Option 3: Web-based Authentication
-- AWS Cognito for user management
-- Session-based access tokens
-- Multi-factor authentication support
-- Web browser access (no client software)
+1. **SSH Access Wide Open**
+   ```hcl
+   # In compute/main.tf - SECURITY RISK
+   ingress {
+     from_port = 22
+     to_port = 22
+     protocol = "tcp"
+     cidr_blocks = ["0.0.0.0/0"]  # ← ALLOWS SSH FROM ANYWHERE
+   }
+   ```
 
-### Gaming Infrastructure
+2. **Password Authentication Enabled**
+   ```bash
+   # In compute/user_data/userdata.ssh
+   sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+   ```
 
-Based on the documentation, the complete platform includes:
+3. **No VPN or Bastion Host**
+   - Web servers have direct internet SSH access
+   - No controlled access mechanism for your brothers
 
-#### Gaming Instances (Managed by Compute Workspace)
-- **EC2 Instances**: Windows-based gaming with:
-  - GPU drivers (NVIDIA Gaming, AMD Windows drivers)
-  - Steam and SteamCMD pre-installed
-  - DirectX and gaming frameworks
-  - Automated driver installation
-  - User profile isolation (non-admin accounts for family)
+### 🔒 Family Access Solutions (For Web Platform Management)
 
-#### Storage & Backup
-- **S3 Buckets**: 
-  - Driver storage and distribution
-  - Automated save game backups
-  - Cross-region replication for disaster recovery
-- **EBS Volumes**: Instance storage with encryption
-- **Automated Backup**: Save games copied every hour
+Since this is a web application platform, your brothers would need:
 
-#### Network Security (VPC Workspace)
-- **Private Subnets**: Gaming instances not directly accessible
-- **Security Groups**: Restrictive access rules
-- **VPN Access**: Secure family member connections
-- **Multi-AZ**: High availability across regions
+#### Option 1: SSH Bastion Host (Recommended)
+```hcl
+# Add to compute workspace
+resource "aws_instance" "bastion" {
+  ami           = "ami-005f9685cb30f234b"
+  instance_type = "t3.micro"
+  subnet_id     = data.terraform_remote_state.vpc.outputs.subnet_id_list[0]
+  
+  security_groups = [aws_security_group.bastion_sg.id]
+  key_name        = "cloud_gaming"
+  
+  tags = {
+    Name = "Bastion-Host"
+  }
+}
 
-## API Endpoints
-
-### Gaming Instance Management
-```bash
-GET    /gaming/instances          # List user's instances
-POST   /gaming/instances          # Create new instance  
-PUT    /gaming/instances/{id}     # Start/stop/terminate instance
-GET    /health                    # System health check
+resource "aws_security_group" "bastion_sg" {
+  name_prefix = "bastion-"
+  vpc_id      = data.terraform_remote_state.vpc.outputs.vpc_id
+  
+  # Allow SSH from specific IP ranges (your family)
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [
+      "YOUR_HOME_IP/32",      # Your IP
+      "BROTHER_1_IP/32",      # Brother 1's IP
+      "BROTHER_2_IP/32"       # Brother 2's IP
+    ]
+  }
+  
+  # Allow outbound SSH to private instances
+  egress {
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.my_tf_ec2_sg.id]
+  }
+}
 ```
 
-### Example Usage
-```bash
-# Create gaming instance
-curl -X POST https://api.gaming.yourdomain.com/gaming/instances \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"instance_type": "g4dn.xlarge"}'
+#### Option 2: AWS Systems Manager Session Manager
+```hcl
+# Add IAM role to EC2 instances for SSM
+resource "aws_iam_role" "ec2_ssm_role" {
+  name = "ec2-ssm-role"
+  
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
 
-# Start instance
-curl -X PUT https://api.gaming.yourdomain.com/gaming/instances/i-12345 \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"action": "start"}'
+resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
+  role       = aws_iam_role.ec2_ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "ec2-ssm-profile"
+  role = aws_iam_role.ec2_ssm_role.name
+}
+
+# Update EC2 instances to use SSM
+resource "aws_instance" "my_tf_ec2" {
+  # ... existing configuration ...
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
+}
 ```
 
-## Development Roadmap
+#### Option 3: VPN Access
+```hcl
+# Add Client VPN endpoint to VPC workspace
+resource "aws_ec2_client_vpn_endpoint" "family_vpn" {
+  description            = "Family VPN for server access"
+  server_certificate_arn = aws_acm_certificate.vpn_server.arn
+  client_cidr_block      = "172.16.0.0/16"
+  
+  authentication_options {
+    type                       = "certificate-authentication"
+    root_certificate_chain_arn = aws_acm_certificate.vpn_client.arn
+  }
+  
+  connection_log_options {
+    enabled = false
+  }
+}
+```
 
-### Version 1 ✅ (Current)
-- ✅ Secure API Lambda functions
-- ✅ Basic instance management APIs
-- ✅ Security improvements (OIDC, input validation)
-- ✅ CI/CD with vulnerability scanning
+### Web Application Access
 
-### Version 2 (Planned)
-- Database integration (PostgreSQL/TimescaleDB)
-- Advanced features: AMI creation, snapshot management
-- Step Functions for complex workflows
-- Multiple instance type support with game-specific recommendations
+Your brothers can access the deployed web applications via:
+- **ALB DNS Name**: `http://[alb-dns-name]` (from compute workspace output)
+- **Direct Instance Access**: Via Elastic IPs (after secure SSH setup)
+- **API Access**: To provision new instances via the EC2-Deployer API
 
-### Version 3 (Future)
-- Multi-tenant user onboarding/offboarding
-- Per-user billing and usage tracking
-- Advanced monitoring and analytics
-- Integration with game libraries and mod support
+## Security Improvements to Implement
 
-## Security Improvements Made
+### 1. Update Compute Workspace Security Groups
 
-### 🔒 Critical Issues Fixed
+```hcl
+# Remove this dangerous rule from compute/main.tf
+# ingress {
+#   description = "Allow SSH into instance"
+#   from_port = 22
+#   to_port = 22
+#   protocol = "tcp"
+#   cidr_blocks = ["0.0.0.0/0"]  # ← REMOVE THIS
+# }
 
-1. **AWS Credentials Security**
-   - ❌ Before: Long-lived access keys in GitHub secrets
-   - ✅ After: OIDC roles with temporary credentials
-   - ✅ Added: Least-privilege IAM policies
+# Replace with bastion host access or specific IPs
+ingress {
+  description     = "Allow SSH from bastion"
+  from_port       = 22
+  to_port         = 22
+  protocol        = "tcp"
+  security_groups = [aws_security_group.bastion_sg.id]
+}
+```
 
-2. **SQL Injection Prevention**
-   - ❌ Before: Malformed SQL with potential injection
-   - ✅ After: Parameterized queries with proper validation
-   - ✅ Added: Input sanitization and validation
+### 2. Disable Password Authentication
 
-3. **Container Security**
-   - ❌ Before: Generic Python image, root user
-   - ✅ After: AWS Lambda base image, non-root user
-   - ✅ Added: Vulnerability scanning in CI/CD
+```bash
+# Update compute/user_data/userdata.ssh
+# Remove this line:
+# sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
-4. **Network Security**
-   - ❌ Before: Direct RDP/SSH exposure planned
-   - ✅ After: VPN-based access, private subnets
-   - ✅ Added: Security group restrictions
+# Add proper SSH hardening:
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+echo "AllowUsers ec2-user" >> /etc/ssh/sshd_config
+```
 
-### 🛡️ Family-Specific Security Features
+### 3. Enable HTTPS with Certificate Manager
 
-1. **User Authentication**
-   - Session-based access tokens
-   - Multi-factor authentication support
-   - User activity logging and monitoring
+```hcl
+# Add to compute workspace
+resource "aws_acm_certificate" "web_cert" {
+  domain_name       = "yourdomain.com"
+  validation_method = "DNS"
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+}
 
-2. **Cost Controls**
-   - Automatic instance shutdown after 30 minutes idle
-   - Billing alerts at $50, $100, $200
-   - Usage tracking per family member
+# Update ALB listener to use HTTPS
+resource "aws_alb_listener" "https_listener" {
+  load_balancer_arn = aws_alb.ec2_deployer_alb.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = aws_acm_certificate.web_cert.arn
 
-3. **Data Protection**
-   - Encrypted S3 buckets for save games
-   - Automated backups with versioning
-   - Cross-region disaster recovery
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.ec2_target_group.arn
+  }
+}
+```
+
+## Cost Estimates
+
+### Monthly Costs (Web Platform)
+- **ALB**: ~$16/month
+- **EC2 instances (2x t3.micro)**: ~$15/month  
+- **Elastic IPs (2)**: ~$7/month
+- **Lambda API calls**: ~$1-5/month
+- **Route 53 hosted zone**: ~$0.50/month
+- **Data transfer**: ~$5-15/month
+
+**Total estimated**: $45-60/month for the web application platform
 
 ## Getting Started
 
 ### Prerequisites
-- AWS CLI configured with appropriate permissions
-- Docker installed for local testing
-- Python 3.9+ for development
+- AWS CLI configured
+- Terraform installed
+- SSH key pair "cloud_gaming" created in AWS
 
-### Family Member Setup
-1. **Option 1 - VPN:** Install AWS Client VPN profile
-2. **Option 2 - Tailscale:** Install Tailscale client
-3. **Option 3 - Web:** Access through web portal
+### Deployment Order
+1. **Deploy VPC**: Creates network foundation
+2. **Deploy Zone Infrastructure**: Sets up DNS
+3. **Deploy Compute**: Creates web servers and ALB
+4. **Deploy APIs**: Both basic (this repo) and advanced APIs
 
-### Local Development
-```bash
-# Install dependencies
-pip install -r build/requirements.txt
+### Accessing Web Applications
+- Navigate to ALB DNS name for web applications
+- Use secure SSH access (after implementing security fixes)
+- Use EC2 Deployer API for automated provisioning
 
-# Test Lambda function locally
-python -c "
-import github_lambda
-result = github_lambda.lambda_handler({'path': '/health', 'httpMethod': 'GET'}, {})
-print(result)
-"
-```
+## Current Status
 
-### Deployment
-The project automatically deploys on pushes to master branch:
-1. Security scanning runs first
-2. Code is deployed to Lambda
-3. Docker image is built and pushed to ECR
-4. S3 artifacts are updated with encryption
-
-## Cost Estimation
-
-### Monthly Costs (Family of 4)
-- **Lambda API calls:** ~$5-10/month
-- **Gaming instances (g4dn.xlarge):** $0.526/hour
-  - 20 hours/week usage: ~$42/month per active user
-- **Storage (S3 + EBS):** ~$10-20/month
-- **VPN (if using AWS Client VPN):** ~$22/month
-- **Data transfer:** ~$5-15/month
-
-**Total estimated:** $80-120/month for active family gaming
-
-### Cost Optimization Tips
-- Use Spot instances for 60-70% savings
-- Automatic shutdown after 30 minutes idle
-- Reserved instances for predictable usage
-- Cross-region replication only for critical data
-
-## Monitoring & Maintenance
-
-### CloudWatch Dashboards
-- Instance usage and costs
-- Family member activity
-- Save game backup status
-- Security events and alerts
-
-### Regular Maintenance
-- Monthly cost review
-- Security patch updates
-- Save game cleanup (keep last 30 days)
-- Performance optimization
-
-## Support & Troubleshooting
-
-### Common Issues
-1. **Can't connect to gaming instance**
-   - Check VPN connection status
-   - Verify security group rules
-   - Confirm instance is running
-
-2. **High costs**
-   - Review auto-shutdown settings
-   - Check for zombie instances
-   - Consider Spot instances
-
-3. **Save game not backed up**
-   - Check S3 bucket permissions
-   - Verify Lambda execution logs
-   - Test backup Lambda manually
-
-### Emergency Contacts
-- Platform Admin: (Your contact info)
-- AWS Support: Enterprise support recommended
-- Security Issues: See SECURITY.md
+- **VPC & Compute**: Production-ready infrastructure ✅
+- **EC2-Deployer API**: Advanced automation capabilities ✅
+- **This Lambda**: Basic development/learning implementation ✅
+- **Security**: Needs hardening (SSH access controls) ⚠️
+- **HTTPS**: Ready to implement with ACM certificates ⚠️
 
 ---
 
 *Last Updated: September 2024*  
-*Original Project: ~2022*  
-*Security Hardened: September 2024*
+*Corrected Architecture Understanding: September 2024*

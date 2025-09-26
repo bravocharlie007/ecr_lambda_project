@@ -1,49 +1,49 @@
-# Security Guide for Family Gaming Cloud Platform
+# Security Guide for EC2 Deployment Automation Platform
 
 ## Overview
 
-This document outlines security best practices and configurations for running a secure family gaming cloud platform without requiring fixed IP addresses.
+This document outlines security best practices and configurations for running a secure EC2 deployment automation platform for web applications, with controlled access for family members without requiring fixed IP addresses.
 
 ## Authentication & Access Control
 
-### For Family Members (Recommended Solutions)
+### For Family Members (Web Platform Management)
 
-#### Option 1: AWS Client VPN (Most Secure)
+#### Option 1: SSH Bastion Host (Most Secure)
 ```bash
-# Family members install AWS VPN client
-# Connect to VPN before accessing gaming instances
-# Gaming instances remain in private subnets
+# Family members SSH to bastion host first
+ssh -i cloud_gaming.pem ec2-user@bastion-host-ip
+# Then SSH to target web servers
+ssh ec2-user@private-server-ip
 ```
 
-**Pros:** Most secure, no IP restrictions needed
-**Cons:** Requires VPN client installation
+**Pros:** Most secure, controlled access, audit logging
+**Cons:** Two-step SSH process
 
-#### Option 2: Tailscale Mesh VPN (Easiest)
+#### Option 2: AWS Systems Manager Session Manager (Easiest)
 ```bash
-# Install Tailscale on gaming instances and family devices
-# Creates secure mesh network
-# No port forwarding or public IPs needed
+# Family members use AWS CLI/Console
+aws ssm start-session --target i-1234567890abcdef0
+# Browser-based access through AWS Console
 ```
 
-**Pros:** Zero-config, works across NATs
-**Cons:** Third-party dependency
+**Pros:** No SSH keys needed, browser-based access
+**Cons:** Requires AWS CLI setup or console access
 
-#### Option 3: Dynamic DNS + OAuth (Flexible)
+#### Option 3: VPN Access (Most Flexible)
 ```bash
-# Use AWS Cognito or Auth0 for user authentication
-# Combined with AWS ALB authentication
-# Session-based access tokens
+# Install AWS Client VPN or third-party VPN solution
+# Direct access to private subnets after VPN connection
 ```
 
-**Pros:** Web-based, no client software
-**Cons:** Still requires some public exposure
+**Pros:** Transparent access, works with all tools
+**Cons:** VPN client setup required
 
 ### Current Security Issues Fixed
 
-1. **AWS Credentials:** Switched from long-lived access keys to OIDC roles
-2. **SQL Injection:** Implemented parameterized queries
-3. **Container Security:** Using AWS Lambda base images, non-root user
-4. **Input Validation:** Added request validation and sanitization
+1. **SSH Access Controls:** Implemented bastion host patterns and SSM access
+2. **Password Authentication:** Disabled in favor of key-based authentication
+3. **Container Security:** Using AWS Lambda base images, vulnerability scanning
+4. **Network Segmentation:** Proper security group controls between tiers
 
 ## Infrastructure Security
 
@@ -53,16 +53,65 @@ Internet Gateway
     ↓
 Application Load Balancer (Public Subnet)
     ↓
-Lambda Functions (Private Subnet)
+Web Servers (Public/Private Subnets with EIPs)
     ↓
-Gaming EC2 Instances (Private Subnet)
-    ↓
-Database (Private Subnet)
+Database (Private Subnet - when implemented)
 ```
 
 ### Required AWS Resources
 
-#### IAM Roles
+#### Security Groups (Compute Workspace)
+```hcl
+# ALB Security Group - Internet facing
+resource "aws_security_group" "alb_sg" {
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Web Server Security Group - ALB only
+resource "aws_security_group" "web_sg" {
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+  
+  ingress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+}
+
+# Bastion Host Security Group - Family IPs only
+resource "aws_security_group" "bastion_sg" {
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [
+      "YOUR_HOME_IP/32",
+      "BROTHER_1_IP/32",
+      "BROTHER_2_IP/32"
+    ]
+  }
+}
+```
+
+#### IAM Roles for Enhanced Security
 ```json
 {
   "Version": "2012-10-17",
@@ -84,19 +133,85 @@ Database (Private Subnet)
 }
 ```
 
-#### Security Groups
+## Web Application Security
+
+### HTTPS Implementation
+```hcl
+# Certificate Manager certificate
+resource "aws_acm_certificate" "web_cert" {
+  domain_name       = "yourdomain.com"
+  validation_method = "DNS"
+  
+  subject_alternative_names = [
+    "*.yourdomain.com"
+  ]
+  
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# ALB HTTPS listener
+resource "aws_alb_listener" "https" {
+  load_balancer_arn = aws_alb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-2017-01"
+  certificate_arn   = aws_acm_certificate.web_cert.arn
+  
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.web.arn
+  }
+}
+
+# HTTP to HTTPS redirect
+resource "aws_alb_listener" "http_redirect" {
+  load_balancer_arn = aws_alb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+  
+  default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+```
+
+### Web Server Hardening
 ```bash
-# Gaming instances (private subnet)
-- Inbound: VPN subnet only (10.0.0.0/8)
-- Outbound: Internet for game downloads
+# Update compute/user_data/userdata.ssh with security hardening
+#!/bin/bash
+sudo su
+yum update -y
+yum install httpd -y
 
-# ALB (public subnet)  
-- Inbound: HTTPS (443) from anywhere
-- Outbound: Lambda subnets only
+# Apache security configuration
+echo "ServerTokens Prod" >> /etc/httpd/conf/httpd.conf
+echo "ServerSignature Off" >> /etc/httpd/conf/httpd.conf
+echo "Header always set X-Frame-Options DENY" >> /etc/httpd/conf/httpd.conf
+echo "Header always set X-Content-Type-Options nosniff" >> /etc/httpd/conf/httpd.conf
 
-# Lambda functions
-- Inbound: ALB security group only
-- Outbound: Gaming instances, RDS, internet
+# SSH hardening
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i 's/^#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/^#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+echo "AllowUsers ec2-user" >> /etc/ssh/sshd_config
+echo "MaxAuthTries 3" >> /etc/ssh/sshd_config
+echo "ClientAliveInterval 300" >> /etc/ssh/sshd_config
+echo "ClientAliveCountMax 2" >> /etc/ssh/sshd_config
+
+systemctl restart sshd
+systemctl start httpd
+systemctl enable httpd
+
+# Create web content
+EC2_AVAIL_ZONE=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+echo "<h1>Web Server $(hostname -f) in AZ $EC2_AVAIL_ZONE</h1>" > /var/www/html/index.html
 ```
 
 ## Secrets Management
@@ -112,85 +227,109 @@ LAMBDA_EXECUTION_ROLE_ARN       # Lambda execution role
 
 ### Environment Variables (Lambda)
 ```bash
-DB_HOST                         # RDS endpoint
-DB_NAME                         # Database name
-DB_USER                         # Database user
-DB_PASS                         # Store in AWS Secrets Manager
-ALLOWED_USERS                   # Comma-separated user IDs
-SESSION_TIMEOUT                 # Default: 3600
+# Store sensitive values in AWS Secrets Manager
+DB_CONNECTION_STRING            # If database is added
+API_KEYS                        # For external integrations
+ALLOWED_USERS                   # Family member user IDs
 ```
 
 ## Cost & Monitoring Security
 
-### Auto-Shutdown Policy
+### Cost Controls
 ```python
 # Implement in Lambda
-def check_inactive_instances():
-    # Shut down instances idle > 30 minutes
-    # Send notifications before shutdown
-    # Backup save games to S3
+def check_resource_costs():
+    # Monitor ALB, EC2, and Lambda costs
+    # Alert when exceeding $100/month
+    # Auto-terminate unused resources
 ```
 
-### CloudWatch Alarms
+### CloudWatch Monitoring
 ```bash
-# Set up billing alerts
-# Monitor unusual instance launches
-# Track failed authentication attempts
-# Alert on high data transfer
+# Set up alarms for:
+# - Failed SSH attempts
+# - High CPU usage on web servers
+# - ALB 4xx/5xx error rates
+# - Lambda function errors
+# - Unusual API call patterns
 ```
 
-## Family-Friendly Security Model
+## Family Access Model
 
-### User Management
-1. **Family Admin (You):** Full control, billing access
-2. **Family Members:** Instance management only for their instances
-3. **Guest Users:** Read-only access, no instance creation
+### Role-Based Access
+1. **Platform Admin (You):** Full AWS access, Terraform deployment
+2. **Family Developers:** SSH access to web servers, limited AWS API access
+3. **Web Users:** HTTP/HTTPS access to deployed applications only
 
-### Session Management
-```python
-# Implement session timeouts
-# Force re-authentication after inactivity
-# Log all instance actions for auditing
-```
-
-### Save Game Protection
+### Access Patterns
 ```bash
-# Automatic S3 backup every hour
-# Versioned backups (keep last 10)
-# Cross-region replication for disaster recovery
+# Family members can:
+# 1. Access web applications via ALB DNS
+# 2. SSH to servers via bastion host or SSM
+# 3. Deploy new applications via EC2-Deployer API
+# 4. View logs and metrics (read-only AWS console access)
 ```
 
 ## Emergency Procedures
 
-### Instance Compromise
-1. Terminate instance immediately via Lambda API
+### Server Compromise
+1. Terminate affected EC2 instance via AWS Console
 2. Check CloudTrail logs for unauthorized actions
-3. Rotate all access credentials
+3. Rotate SSH keys and API credentials
 4. Review security group rules
 
 ### Cost Overrun
-1. Set up billing alerts ($50, $100, $200)
-2. Implement emergency shutdown Lambda
-3. Monitor Spot instance pricing
-4. Use reserved instances for base capacity
+1. Set up billing alerts at $25, $50, $100
+2. Implement automatic resource shutdown
+3. Use AWS Budgets for cost tracking
+4. Monitor reserved instance utilization
 
 ## Security Checklist
 
+### Infrastructure Security
 - [ ] Enable AWS CloudTrail in all regions
 - [ ] Set up AWS Config for compliance monitoring
 - [ ] Enable VPC Flow Logs
 - [ ] Configure AWS GuardDuty for threat detection
-- [ ] Set up AWS Security Hub for centralized security findings
+- [ ] Set up AWS Security Hub for centralized findings
 - [ ] Enable AWS WAF on ALB
 - [ ] Configure AWS Shield for DDoS protection
-- [ ] Set up AWS Inspector for vulnerability assessments
-- [ ] Enable EBS encryption by default
-- [ ] Configure S3 bucket encryption and versioning
-- [ ] Set up cross-region backups
-- [ ] Test disaster recovery procedures
+
+### Web Application Security
+- [ ] Implement HTTPS with valid certificates
+- [ ] Configure security headers (X-Frame-Options, etc.)
+- [ ] Set up log aggregation and monitoring
+- [ ] Implement backup and recovery procedures
+- [ ] Test disaster recovery scenarios
+- [ ] Regular security updates for EC2 instances
+
+### Access Control
+- [ ] Implement bastion host or SSM access
+- [ ] Disable password authentication
+- [ ] Use IAM roles instead of access keys
+- [ ] Enable MFA for AWS console access
+- [ ] Regular access review (quarterly)
+- [ ] Audit SSH key usage
+
+### Monitoring & Alerting
+- [ ] CloudWatch alarms for system health
+- [ ] Cost monitoring and alerts
+- [ ] Security event notifications
+- [ ] Performance monitoring dashboards
+- [ ] Log retention policies
+- [ ] Incident response procedures
 
 ## Contact & Incident Response
 
-For security incidents or questions, contact the platform administrator immediately.
+### Family Access Issues
+- Platform admin contact for SSH key distribution
+- Documentation for common troubleshooting steps
+- Escalation procedures for emergencies
 
-**Important:** Never share AWS credentials, API keys, or RDP passwords through insecure channels.
+### Security Incidents
+- Immediate isolation procedures
+- Evidence preservation steps
+- Communication protocols
+- Recovery and lessons learned process
+
+**Important:** This is a web application hosting platform, not a gaming platform. Security measures are focused on protecting web servers, databases, and API endpoints rather than gaming instances.
